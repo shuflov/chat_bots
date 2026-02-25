@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Conversation</title>
+    <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+    <div class="container">
+        <a href="/" class="back-link">← Back to list</a>
+        <div class="conv-header-row">
+            <h1 id="conv-title" class="editable" onclick="editTitle()">Loading...</h1>
+            <button id="delete-btn" class="btn-delete-conv" onclick="deleteConv()">🗑️ Delete</button>
+        </div>
+        <div class="conversation-header">
+            <div id="progress"></div>
+            <button id="stop-btn" class="btn-stop" style="display: none;">⏹ Stop</button>
+        </div>
+        <div id="completion-msg" class="completion-msg" style="display: none;">
+            🎉 Conversation Complete! 🎉
+        </div>
+        <div id="messages"></div>
+    </div>
+    <script src="/script.js"></script>
+    <script>
+        const convId = window.location.pathname.split('/').pop();
+        loadConversation(convId);
+        
+        document.getElementById('stop-btn').addEventListener('click', async () => {
+            await fetch(`/api/conversations/${convId}/stop`, {method: 'POST'});
+            loadConversation(convId);
+        });
+        
+        async function editTitle() {
+            const newTitle = prompt('Enter new conversation name:');
+            if (newTitle && newTitle.trim()) {
+                await fetch(`/api/conversations/${convId}`, {
+                    method: 'PUT',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({title: newTitle.trim()})
+                });
+                loadConversation(convId);
+                if (window.location.pathname === '/') {
+                    loadConversations();
+                }
+            }
+        }
+        
+        async function deleteConv() {
+            if (confirm('Delete this conversation? This cannot be undone.')) {
+                await fetch(`/api/conversations/${convId}`, {method: 'DELETE'});
+                window.location.href = '/';
+            }
+        }
+    </script>
+</body>
+</html>
