@@ -279,6 +279,8 @@ sudo systemctl restart chatbot
 | `public/` | Web UI (not needed for CLI) | ❌ |
 | `instance/` | Local database | ❌ |
 
+source venv/bin/activate
+
 ---
 
 ## Quick Reference: Common Commands
