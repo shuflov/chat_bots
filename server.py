@@ -285,10 +285,10 @@ CLI_COLORS = {
 }
 
 
-def run_cli_conversation(initial_message: str, max_turns: int = 20, delay: int = 30):
+def run_cli_conversation(initial_message: str, max_turns: int = 20, delay: int = 30, bot1_name: str = None, bot2_name: str = None):
     """
     Run a conversation in CLI-only mode (no web server).
-    Uses the first two available personalities as bot1 and bot2.
+    Uses specified personalities or defaults to first two available.
     """
     with app.app_context():
         # Get personalities
@@ -299,8 +299,29 @@ def run_cli_conversation(initial_message: str, max_turns: int = 20, delay: int =
             print("Please create more personalities via the web interface first.")
             return
         
-        bot1 = personalities[0]
-        bot2 = personalities[1]
+        # Find bot1 personality
+        if bot1_name:
+            bot1 = Personality.query.filter(Personality.name.ilike(f"%{bot1_name}%")).first()
+            if not bot1:
+                print(f"Error: No personality found matching '{bot1_name}'")
+                print("Available personalities:", ", ".join(p.name for p in personalities))
+                return
+        else:
+            bot1 = personalities[0]
+        
+        # Find bot2 personality
+        if bot2_name:
+            bot2 = Personality.query.filter(Personality.name.ilike(f"%{bot2_name}%")).first()
+            if not bot2:
+                print(f"Error: No personality found matching '{bot2_name}'")
+                print("Available personalities:", ", ".join(p.name for p in personalities))
+                return
+        else:
+            bot2 = personalities[1]
+        
+        if bot1.id == bot2.id:
+            print("Error: Bot1 and Bot2 must be different personalities.")
+            return
         
         print(f"\n{'=' * 50}")
         print(f"Starting CLI Conversation")
@@ -406,6 +427,8 @@ Examples:
   python server.py --web -t 10 -d 15  # Web server with custom settings
   python server.py --cli         # Run CLI-only mode (terminal only)
   python server.py --cli -t 10   # CLI mode with 10 turns
+  python server.py --cli -t 10 -d 30  # CLI mode with 10 turns, 30s delay
+  python server.py --cli --bot1 "philo" --bot2 "engi"  # CLI with specific personalities
   python server.py --port 8080   # Web server on port 8080
         """
     )
@@ -450,6 +473,20 @@ Examples:
         help="Default delay between responses in seconds (default: 30)"
     )
     
+    parser.add_argument(
+        "--bot1",
+        type=str,
+        default=None,
+        help="Bot1 personality name (partial match, e.g., 'philo' for 'Philosopher')"
+    )
+    
+    parser.add_argument(
+        "--bot2",
+        type=str,
+        default=None,
+        help="Bot2 personality name (partial match, e.g., 'engi' for 'Engineer')"
+    )
+    
     args = parser.parse_args()
     
     # Check for API key
@@ -471,8 +508,16 @@ Examples:
     if args.cli:
         # CLI-only mode
         print("=== Chat Bot Conversations (CLI Mode) ===")
-        print("Bot 1: First personality in database")
-        print("Bot 2: Second personality in database")
+        
+        # Show available personalities
+        with app.app_context():
+            personalities = Personality.query.order_by(Personality.is_preset.desc(), Personality.name).all()
+            print(f"Available personalities: {', '.join(p.name for p in personalities)}")
+        
+        bot1_info = args.bot1 if args.bot1 else "First personality"
+        bot2_info = args.bot2 if args.bot2 else "Second personality"
+        print(f"Bot 1: {bot1_info}")
+        print(f"Bot 2: {bot2_info}")
         print(f"\nDelay between responses: {args.delay} seconds")
         print(f"Max turns: {args.turns}")
         print("\nType your first message to start the conversation:")
@@ -482,7 +527,7 @@ Examples:
             print("Please enter a message to start.")
             sys.exit(1)
         
-        run_cli_conversation(initial, args.turns, args.delay)
+        run_cli_conversation(initial, args.turns, args.delay, args.bot1, args.bot2)
         
     else:
         # Web server mode (default)
