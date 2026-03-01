@@ -145,6 +145,7 @@ def get_conversation(conv_id):
         "remaining": conv.max_turns - conv.current_turn,
         "delay": conv.delay,
         "status": conv.status,
+        "total_tokens": conv.total_tokens,
         "bot1_personality": conv.bot1_personality.name if conv.bot1_personality else None,
         "bot2_personality": conv.bot2_personality.name if conv.bot2_personality else None,
         "created_at": conv.created_at.isoformat(),
@@ -152,7 +153,10 @@ def get_conversation(conv_id):
             {
                 "sender": m.sender,
                 "content": m.content,
-                "timestamp": m.timestamp.isoformat()
+                "timestamp": m.timestamp.isoformat(),
+                "prompt_tokens": m.prompt_tokens,
+                "completion_tokens": m.completion_tokens,
+                "total_tokens": m.total_tokens
             }
             for m in messages
         ]
@@ -256,16 +260,24 @@ def run_conversation_thread(conv_id):
             if conv.status == "stopped":
                 break
             
-            response = groq_client.chat(bot["system_prompt"], history[bot_key])
+            response, usage = groq_client.chat(bot["system_prompt"], history[bot_key])
             
             history[bot_key].append({"role": "assistant", "content": response})
             
             other_bot = BOT_ORDER[1 - current_bot_idx]
             history[other_bot].append({"role": "user", "content": f"{bot['name']}: {response}"})
             
-            msg = Message(conversation_id=conv.id, sender=bot["name"], content=response)
+            msg = Message(
+                conversation_id=conv.id,
+                sender=bot["name"],
+                content=response,
+                prompt_tokens=usage["prompt_tokens"],
+                completion_tokens=usage["completion_tokens"],
+                total_tokens=usage["total_tokens"]
+            )
             db.session.add(msg)
             conv.current_turn = turn + 1
+            conv.total_tokens += usage["total_tokens"]
             db.session.commit()
             
             current_bot_idx = 1 - current_bot_idx
@@ -285,7 +297,7 @@ CLI_COLORS = {
 }
 
 
-def run_cli_conversation(initial_message: str, max_turns: int = 20, delay: int = 30, bot1_name: str = None, bot2_name: str = None):
+def run_cli_conversation(initial_message: str, max_turns: int = 20, delay: int = 30, bot1_name: str | None = None, bot2_name: str | None = None, quiet: bool = False):
     """
     Run a conversation in CLI-only mode (no web server).
     Uses specified personalities or defaults to first two available.
@@ -323,13 +335,14 @@ def run_cli_conversation(initial_message: str, max_turns: int = 20, delay: int =
             print("Error: Bot1 and Bot2 must be different personalities.")
             return
         
-        print(f"\n{'=' * 50}")
-        print(f"Starting CLI Conversation")
-        print(f"Bot 1: {bot1.name}")
-        print(f"Bot 2: {bot2.name}")
-        print(f"Max turns: {max_turns}")
-        print(f"Delay between responses: {delay} seconds")
-        print(f"{'=' * 50}\n")
+        if not quiet:
+            print(f"\n{'=' * 50}")
+            print(f"Starting CLI Conversation")
+            print(f"Bot 1: {bot1.name}")
+            print(f"Bot 2: {bot2.name}")
+            print(f"Max turns: {max_turns}")
+            print(f"Delay between responses: {delay} seconds")
+            print(f"{'=' * 50}\n")
         
         # Create conversation in database
         conv = Conversation(
@@ -360,7 +373,8 @@ def run_cli_conversation(initial_message: str, max_turns: int = 20, delay: int =
         }
         
         # Print initial message
-        print(f"{CLI_COLORS['user']}You:{CLI_COLORS['reset']} {initial_message}\n")
+        if not quiet:
+            print(f"{CLI_COLORS['user']}You:{CLI_COLORS['reset']} {initial_message}\n")
         
         current_bot_idx = 0
         
@@ -369,10 +383,11 @@ def run_cli_conversation(initial_message: str, max_turns: int = 20, delay: int =
                 bot_key = BOT_ORDER[current_bot_idx]
                 bot = BOTS[bot_key]
                 
-                print(f"{CLI_COLORS['reset']}[Waiting {delay}s for {bot['name']}'s response...]")
+                if not quiet:
+                    print(f"{CLI_COLORS['reset']}[Waiting {delay}s for {bot['name']}'s response...]")
                 time.sleep(delay)
                 
-                response = groq_client.chat(bot["system_prompt"], history[bot_key])
+                response, usage = groq_client.chat(bot["system_prompt"], history[bot_key])
                 
                 history[bot_key].append({"role": "assistant", "content": response})
                 
@@ -380,13 +395,22 @@ def run_cli_conversation(initial_message: str, max_turns: int = 20, delay: int =
                 history[other_bot].append({"role": "user", "content": f"{bot['name']}: {response}"})
                 
                 # Print bot response with color
-                color = CLI_COLORS[bot_key]
-                print(f"{color}{bot['name']}:{CLI_COLORS['reset']} {response}\n")
+                if not quiet:
+                    color = CLI_COLORS[bot_key]
+                    print(f"{color}{bot['name']}:{CLI_COLORS['reset']} {response}\n")
                 
-                # Save to database
-                msg = Message(conversation_id=conv.id, sender=bot["name"], content=response)
+                # Save to database with token usage
+                msg = Message(
+                    conversation_id=conv.id,
+                    sender=bot["name"],
+                    content=response,
+                    prompt_tokens=usage["prompt_tokens"],
+                    completion_tokens=usage["completion_tokens"],
+                    total_tokens=usage["total_tokens"]
+                )
                 db.session.add(msg)
                 conv.current_turn = turn + 1
+                conv.total_tokens += usage["total_tokens"]
                 db.session.commit()
                 
                 current_bot_idx = 1 - current_bot_idx
@@ -396,13 +420,18 @@ def run_cli_conversation(initial_message: str, max_turns: int = 20, delay: int =
             db.session.commit()
             
         except KeyboardInterrupt:
-            print("\n\nConversation stopped by user.")
+            if not quiet:
+                print("\n\nConversation stopped by user.")
             conv.status = "stopped"
             db.session.commit()
         
-        print(f"\n{'=' * 50}")
-        print("Conversation ended")
-        print(f"{'=' * 50}\n")
+        if not quiet:
+            conv = Conversation.query.get(conv.id)
+            print(f"\n{'=' * 50}")
+            print("Conversation ended")
+            print(f"Total turns: {conv.current_turn}")
+            print(f"Total tokens used: {conv.total_tokens:,}")
+            print(f"{'=' * 50}\n")
 
 
 def init_database():
@@ -429,6 +458,9 @@ Examples:
   python server.py --cli -t 10   # CLI mode with 10 turns
   python server.py --cli -t 10 -d 30  # CLI mode with 10 turns, 30s delay
   python server.py --cli --bot1 "philo" --bot2 "engi"  # CLI with specific personalities
+  python server.py --cli -m "Hello bots!"  # CLI with initial message (non-interactive)
+  python server.py --cli --list   # List available personalities
+  python server.py --cli -q       # Quiet mode (less output)
   python server.py --port 8080   # Web server on port 8080
         """
     )
@@ -487,6 +519,25 @@ Examples:
         help="Bot2 personality name (partial match, e.g., 'engi' for 'Engineer')"
     )
     
+    parser.add_argument(
+        "-m", "--message",
+        type=str,
+        default=None,
+        help="Initial message to start conversation (skips interactive prompt)"
+    )
+    
+    parser.add_argument(
+        "--list",
+        action="store_true",
+        help="List available personalities and exit"
+    )
+    
+    parser.add_argument(
+        "-q", "--quiet",
+        action="store_true",
+        help="Reduce output verbosity"
+    )
+    
     args = parser.parse_args()
     
     # Check for API key
@@ -506,28 +557,67 @@ Examples:
     
     # Determine mode
     if args.cli:
-        # CLI-only mode
-        print("=== Chat Bot Conversations (CLI Mode) ===")
-        
-        # Show available personalities
         with app.app_context():
             personalities = Personality.query.order_by(Personality.is_preset.desc(), Personality.name).all()
-            print(f"Available personalities: {', '.join(p.name for p in personalities)}")
-        
-        bot1_info = args.bot1 if args.bot1 else "First personality"
-        bot2_info = args.bot2 if args.bot2 else "Second personality"
-        print(f"Bot 1: {bot1_info}")
-        print(f"Bot 2: {bot2_info}")
-        print(f"\nDelay between responses: {args.delay} seconds")
-        print(f"Max turns: {args.turns}")
-        print("\nType your first message to start the conversation:")
-        
-        initial = input("\n> ").strip()
-        if not initial:
-            print("Please enter a message to start.")
-            sys.exit(1)
-        
-        run_cli_conversation(initial, args.turns, args.delay, args.bot1, args.bot2)
+            
+            # Handle --list flag
+            if args.list:
+                print("Available personalities:")
+                for p in personalities:
+                    preset_marker = " (preset)" if p.is_preset else ""
+                    print(f"  - {p.name}{preset_marker}")
+                sys.exit(0)
+            
+            # Validate bot names upfront
+            if args.bot1:
+                bot1 = Personality.query.filter(Personality.name.ilike(f"%{args.bot1}%")).first()
+                if not bot1:
+                    print(f"Error: No personality found matching '{args.bot1}'")
+                    print("Available personalities:", ", ".join(p.name for p in personalities))
+                    sys.exit(1)
+                bot1_name = bot1.name
+            else:
+                bot1_name = None
+                
+            if args.bot2:
+                bot2 = Personality.query.filter(Personality.name.ilike(f"%{args.bot2}%")).first()
+                if not bot2:
+                    print(f"Error: No personality found matching '{args.bot2}'")
+                    print("Available personalities:", ", ".join(p.name for p in personalities))
+                    sys.exit(1)
+                bot2_name = bot2.name
+            else:
+                bot2_name = None
+            
+            # Check that we have at least 2 personalities
+            if len(personalities) < 2:
+                print("Error: Need at least 2 personalities to run a conversation.")
+                print("Please create more personalities via the web interface first.")
+                sys.exit(1)
+            
+            # CLI-only mode
+            if not args.quiet:
+                print("=== Chat Bot Conversations (CLI Mode) ===")
+                print(f"Available personalities: {', '.join(p.name for p in personalities)}")
+                bot1_info = bot1_name if bot1_name else "First personality"
+                bot2_info = bot2_name if bot2_name else "Second personality"
+                print(f"Bot 1: {bot1_info}")
+                print(f"Bot 2: {bot2_info}")
+                print(f"\nDelay between responses: {args.delay} seconds")
+                print(f"Max turns: {args.turns}")
+            
+            # Get initial message
+            if args.message:
+                initial = args.message.strip()
+            else:
+                print("\nType your first message to start the conversation:")
+                initial = input("\n> ").strip()
+            
+            if not initial:
+                print("Please enter a message to start.")
+                sys.exit(1)
+            
+            run_cli_conversation(initial, args.turns, args.delay, bot1_name, bot2_name, args.quiet)
         
     else:
         # Web server mode (default)

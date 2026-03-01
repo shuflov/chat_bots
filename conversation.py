@@ -53,7 +53,7 @@ def run_conversation(initial_message: str):
         print(f"\n[Waiting {REPLY_DELAY}s for {bot['name']}'s response...]")
         time.sleep(REPLY_DELAY)
 
-        response = groq_client.chat(bot["system_prompt"], history[bot_key])
+        response, usage = groq_client.chat(bot["system_prompt"], history[bot_key])
 
         history[bot_key].append({"role": "assistant", "content": response})
 
@@ -63,8 +63,16 @@ def run_conversation(initial_message: str):
         print_message(bot["name"], response, COLORS[bot_key])
 
         with app.app_context():
-            msg = Message(conversation_id=conv.id, sender=bot["name"], content=response)
+            msg = Message(
+                conversation_id=conv.id,
+                sender=bot["name"],
+                content=response,
+                prompt_tokens=usage["prompt_tokens"],
+                completion_tokens=usage["completion_tokens"],
+                total_tokens=usage["total_tokens"]
+            )
             db.session.add(msg)
+            conv.total_tokens += usage["total_tokens"]
             db.session.commit()
 
         current_bot_idx = 1 - current_bot_idx

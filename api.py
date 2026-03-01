@@ -102,6 +102,7 @@ def get_conversation(conv_id):
         "remaining": conv.max_turns - conv.current_turn,
         "delay": conv.delay,
         "status": conv.status,
+        "total_tokens": conv.total_tokens,
         "bot1_personality": conv.bot1_personality.name if conv.bot1_personality else None,
         "bot2_personality": conv.bot2_personality.name if conv.bot2_personality else None,
         "created_at": conv.created_at.isoformat(),
@@ -109,7 +110,10 @@ def get_conversation(conv_id):
             {
                 "sender": m.sender,
                 "content": m.content,
-                "timestamp": m.timestamp.isoformat()
+                "timestamp": m.timestamp.isoformat(),
+                "prompt_tokens": m.prompt_tokens,
+                "completion_tokens": m.completion_tokens,
+                "total_tokens": m.total_tokens
             }
             for m in messages
         ]
@@ -211,16 +215,24 @@ def run_conversation_thread(conv_id):
             if conv.status == "stopped":
                 break
             
-            response = groq_client.chat(bot["system_prompt"], history[bot_key])
+            response, usage = groq_client.chat(bot["system_prompt"], history[bot_key])
             
             history[bot_key].append({"role": "assistant", "content": response})
             
             other_bot = BOT_ORDER[1 - current_bot_idx]
             history[other_bot].append({"role": "user", "content": f"{bot['name']}: {response}"})
             
-            msg = Message(conversation_id=conv.id, sender=bot["name"], content=response)
+            msg = Message(
+                conversation_id=conv.id,
+                sender=bot["name"],
+                content=response,
+                prompt_tokens=usage["prompt_tokens"],
+                completion_tokens=usage["completion_tokens"],
+                total_tokens=usage["total_tokens"]
+            )
             db.session.add(msg)
             conv.current_turn = turn + 1
+            conv.total_tokens += usage["total_tokens"]
             db.session.commit()
             
             current_bot_idx = 1 - current_bot_idx

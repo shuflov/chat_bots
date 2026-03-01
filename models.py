@@ -23,6 +23,7 @@ class Conversation(db.Model):
     bot2_personality_id = db.Column(db.Integer, db.ForeignKey("personality.id"))
     status = db.Column(db.String(20), default="pending")
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    total_tokens = db.Column(db.Integer, default=0)
     messages = db.relationship("Message", backref="conversation", lazy=True)
     bot1_personality = db.relationship("Personality", foreign_keys=[bot1_personality_id])
     bot2_personality = db.relationship("Personality", foreign_keys=[bot2_personality_id])
@@ -34,6 +35,9 @@ class Message(db.Model):
     sender = db.Column(db.String(50), nullable=False)
     content = db.Column(db.Text, nullable=False)
     timestamp = db.Column(db.DateTime, default=datetime.utcnow)
+    prompt_tokens = db.Column(db.Integer, default=0)
+    completion_tokens = db.Column(db.Integer, default=0)
+    total_tokens = db.Column(db.Integer, default=0)
 
 
 PRESET_PERSONALITIES = [
