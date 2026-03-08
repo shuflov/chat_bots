@@ -126,7 +126,8 @@ def get_conversations():
             "status": c.status,
             "current_turn": c.current_turn,
             "max_turns": c.max_turns,
-            "created_at": c.created_at.isoformat()
+            "created_at": c.created_at.isoformat(),
+            "total_tokens": c.total_tokens
         }
         for c in conversations
     ])
