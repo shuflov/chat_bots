@@ -301,6 +301,17 @@ textarea {
 .status-stopped { color: #ffa502; }
 .status-completed { color: #2ed573; }
 
+.tokens {
+    color: #888;
+    font-size: 0.85rem;
+}
+
+.message .tokens {
+    font-size: 0.7rem;
+    opacity: 0.7;
+    margin-left: 0.5rem;
+}
+
 .conv-title .status-running,
 .conv-title .status-stopped,
 .conv-title .status-completed {

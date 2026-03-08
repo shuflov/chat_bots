@@ -68,6 +68,7 @@ async function loadConversations() {
                     <span class="conv-meta">
                         <span class="status-${c.status}">${statusText}</span>
                         <span class="conv-date">${new Date(c.created_at).toLocaleString()}</span>
+                        <span class="tokens">${c.total_tokens || 0} tokens</span>
                     </span>
                 </a>
                 <button class="btn-delete-small" onclick="event.preventDefault(); deleteConversation(${c.id})">🗑️</button>
@@ -99,15 +100,15 @@ async function loadConversation(id) {
         const completionMsg = document.getElementById('completion-msg');
         
         if (conv.status === 'running') {
-            progress.innerHTML = `<span class="status-running">Turn ${conv.current_turn}/${conv.max_turns} • ${conv.remaining} remaining</span>`;
+            progress.innerHTML = `<span class="status-running">Turn ${conv.current_turn}/${conv.max_turns} • ${conv.remaining} remaining</span> <span class="tokens">• ${conv.total_tokens || 0} tokens</span>`;
             stopBtn.style.display = 'block';
             completionMsg.style.display = 'none';
         } else if (conv.status === 'stopped') {
-            progress.innerHTML = `<span class="status-stopped">Stopped at turn ${conv.current_turn}/${conv.max_turns}</span>`;
+            progress.innerHTML = `<span class="status-stopped">Stopped at turn ${conv.current_turn}/${conv.max_turns}</span> <span class="tokens">• ${conv.total_tokens || 0} tokens</span>`;
             stopBtn.style.display = 'none';
             completionMsg.style.display = 'none';
         } else if (conv.status === 'completed') {
-            progress.innerHTML = `<span class="status-completed">Completed (${conv.max_turns} turns)</span>`;
+            progress.innerHTML = `<span class="status-completed">Completed (${conv.max_turns} turns)</span> <span class="tokens">• ${conv.total_tokens || 0} tokens</span>`;
             stopBtn.style.display = 'none';
             completionMsg.style.display = 'block';
         } else {
@@ -122,7 +123,7 @@ async function loadConversation(id) {
         } else {
             msgs.innerHTML = conv.messages.map(m => `
                 <div class="message ${m.sender === 'You' ? 'user' : m.sender === conv.bot1_personality ? 'bot1' : 'bot2'}">
-                    <div class="sender">${escapeHtml(m.sender)}</div>
+                    <div class="sender">${escapeHtml(m.sender)}${m.total_tokens ? `<span class="tokens">${m.total_tokens} tokens</span>` : ''}</div>
                     <div class="content">${escapeHtml(m.content)}</div>
                 </div>
             `).join('');
