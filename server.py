@@ -480,8 +480,8 @@ Examples:
     parser.add_argument(
         "--port", 
         type=int, 
-        default=5000,
-        help="Port for web server (default: 5000)"
+        default=3002,
+        help="Port for web server (default: 3002)"
     )
     
     parser.add_argument(

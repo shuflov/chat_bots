@@ -1,7 +1,8 @@
 async function loadPersonalities() {
     try {
         const res = await fetch('/api/personalities');
-        const personalities = await res.json();
+        const data = await res.json();
+        const personalities = data.personalities || [];
         
         const bot1 = document.getElementById('bot1');
         const bot2 = document.getElementById('bot2');
